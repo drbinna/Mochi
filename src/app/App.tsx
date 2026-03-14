@@ -8,7 +8,7 @@ import { KnowledgeCard } from "./components/KnowledgeCard";
 import { HudElements, StartHud } from "./components/HudElements";
 import { TopicPicker, type Zone } from "./components/TopicPicker";
 import { CelebrationOverlay, CompletionScreen } from "./components/CelebrationOverlay";
-import { useVapi } from "./components/useVapi";
+import { useInworld } from "./components/useInworld";
 
 type Screen = "start" | "session" | "completion";
 type MicState = "default" | "listening" | "speaking";
@@ -77,15 +77,15 @@ export default function App() {
   const [currentBars, setCurrentBars] = useState(statBars);
   const [interactionCount, setInteractionCount] = useState(0);
 
-  // VAPI voice integration
-  const vapi = useVapi();
-  const vapiConnected = vapi.status !== "idle" && vapi.status !== "error";
+  // Inworld voice integration
+  const inworld = useInworld();
+  const inworldConnected = inworld.status !== "idle" && inworld.status !== "error";
 
-  // Sync VAPI status → Mochi UI states
+  // Sync Inworld status → Mochi UI states
   useEffect(() => {
     if (screen !== "session") return;
 
-    switch (vapi.status) {
+    switch (inworld.status) {
       case "connecting":
         setMicState("default");
         setMochiState("idle");
@@ -100,8 +100,8 @@ export default function App() {
       case "speaking":
         setMicState("speaking");
         setMochiState("speaking");
-        if (vapi.assistantMessage) {
-          setSpeechText(vapi.assistantMessage);
+        if (inworld.assistantMessage) {
+          setSpeechText(inworld.assistantMessage);
           setShowSpeech(true);
         }
         break;
@@ -115,17 +115,17 @@ export default function App() {
         setMochiState("idle");
         break;
       case "idle":
-        if (vapiConnected) {
+        if (inworldConnected) {
           setMicState("default");
           setMochiState("idle");
         }
         break;
     }
-  }, [vapi.status, vapi.assistantMessage, screen]);
+  }, [inworld.status, inworld.assistantMessage, screen]);
 
   // Track interactions for knowledge cards / celebrations
   useEffect(() => {
-    if (vapi.assistantMessage && screen === "session") {
+    if (inworld.assistantMessage && screen === "session") {
       setInteractionCount((prev) => {
         const next = prev + 1;
         // Every 3rd response, show a knowledge card
@@ -148,12 +148,12 @@ export default function App() {
         return next;
       });
     }
-  }, [vapi.assistantMessage]);
+  }, [inworld.assistantMessage]);
 
-  // Sync mute state with VAPI
+  // Sync mute state with Inworld
   useEffect(() => {
-    if (vapiConnected && muted !== vapi.isMuted) {
-      vapi.toggleMute();
+    if (inworldConnected && muted !== inworld.isMuted) {
+      inworld.toggleMute();
     }
   }, [muted]);
 
@@ -212,10 +212,10 @@ export default function App() {
     }, 3000);
   }, [speechIndex, currentCardIndex, micState]);
 
-  // Mic button — uses VAPI if configured, otherwise falls back to demo
+  // Mic button — uses Inworld if configured, otherwise falls back to demo
   const handleMicPress = useCallback(() => {
     // If mic is blocked (iframe policy / permission denied), go straight to demo
-    if (vapi.micBlocked) {
+    if (inworld.micBlocked) {
       if (micState === "listening") {
         setMicState("default");
         setMochiState("idle");
@@ -225,27 +225,27 @@ export default function App() {
       return;
     }
 
-    // If VAPI is active, toggle the call on/off
-    if (vapiConnected) {
-      vapi.stop();
+    // If Inworld is active, toggle the call on/off
+    if (inworldConnected) {
+      inworld.stop();
       setMicState("default");
       setMochiState("idle");
       return;
     }
 
-    // Try starting VAPI
-    if (vapi.status === "idle" && micState === "default") {
-      vapi.start().then(() => {
-        // VAPI will drive state via the useEffect above
+    // Try starting Inworld
+    if (inworld.status === "idle" && micState === "default") {
+      inworld.start().then(() => {
+        // Inworld will drive state via the useEffect above
       }).catch(() => {
-        // VAPI failed — fall back to demo mode silently
+        // Inworld failed — fall back to demo mode silently
         runDemoMode();
       });
       return;
     }
 
-    // Demo fallback (no VAPI key configured or previous error)
-    if (vapi.status === "error" || vapi.error) {
+    // Demo fallback (no Inworld key configured or previous error)
+    if (inworld.status === "error" || inworld.error) {
       if (micState === "listening") {
         setMicState("default");
         setMochiState("idle");
@@ -260,7 +260,7 @@ export default function App() {
       setMicState("default");
       setMochiState("idle");
     }
-  }, [micState, vapi, vapiConnected, runDemoMode]);
+  }, [micState, inworld, inworldConnected, runDemoMode]);
 
   const handleCollectCard = useCallback(() => {
     setShowCard(false);
@@ -297,9 +297,9 @@ export default function App() {
   }, [totalXp]);
 
   const handleBye = useCallback(() => {
-    // Stop VAPI call if active
-    if (vapiConnected) {
-      vapi.stop();
+    // Stop Inworld call if active
+    if (inworldConnected) {
+      inworld.stop();
     }
     setShowCompletion(false);
     setScreen("start");
@@ -311,7 +311,7 @@ export default function App() {
     setSpeechIndex(0);
     setCurrentCardIndex(0);
     setInteractionCount(0);
-  }, [vapiConnected, vapi]);
+  }, [inworldConnected, inworld]);
 
   // Dim overlay for listening
   const showDim = micState === "listening";
@@ -469,8 +469,8 @@ export default function App() {
               muted={muted}
               onMuteToggle={() => setMuted(!muted)}
               onHome={() => {
-                // Stop VAPI before going home
-                if (vapiConnected) vapi.stop();
+                // Stop Inworld before going home
+                if (inworldConnected) inworld.stop();
                 handleGoHome();
               }}
               cardsCollected={cardsCollected}
