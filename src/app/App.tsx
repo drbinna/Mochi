@@ -4,6 +4,7 @@ import { StarfieldCanvas } from "./components/StarfieldCanvas";
 import { MochiCharacter } from "./components/MochiCharacter";
 import { SpeechBubble } from "./components/SpeechBubble";
 import { MicButton } from "./components/MicButton";
+import { SideGlow } from "./components/SideGlow";
 import { KnowledgeCard } from "./components/KnowledgeCard";
 import { HudElements, StartHud } from "./components/HudElements";
 import { TopicPicker, type Zone } from "./components/TopicPicker";
@@ -61,8 +62,6 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("start");
   const [micState, setMicState] = useState<MicState>("default");
   const [mochiState, setMochiState] = useState<MochiState>("sleeping");
-  const [speechText, setSpeechText] = useState("");
-  const [showSpeech, setShowSpeech] = useState(false);
   const [showCard, setShowCard] = useState(false);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [showTopicPicker, setShowTopicPicker] = useState(false);
@@ -85,25 +84,20 @@ export default function App() {
   useEffect(() => {
     if (screen !== "session") return;
 
+    console.log("UI Sync Status:", inworld.status, "Msg:", !!inworld.assistantMessage);
+
     switch (inworld.status) {
       case "connecting":
         setMicState("default");
         setMochiState("idle");
-        setSpeechText("Hmm, let me wake up my voice... 🎤");
-        setShowSpeech(true);
         break;
       case "listening":
         setMicState("listening");
         setMochiState("listening");
-        setShowSpeech(false);
         break;
       case "speaking":
         setMicState("speaking");
         setMochiState("speaking");
-        if (inworld.assistantMessage) {
-          setSpeechText(inworld.assistantMessage);
-          setShowSpeech(true);
-        }
         break;
       case "active":
         setMicState("listening");
@@ -176,7 +170,6 @@ export default function App() {
 
     setMicState("listening");
     setMochiState("listening");
-    setShowSpeech(false);
 
     // Simulate "listening" for 3 seconds, then Mochi responds once
     setTimeout(() => {
@@ -184,8 +177,6 @@ export default function App() {
       setMochiState("speaking");
       const nextIndex = (speechIndex + 1) % speechLines.length;
       setSpeechIndex(nextIndex);
-      setSpeechText(speechLines[nextIndex]);
-      setShowSpeech(true);
 
       // After speaking, return to idle — wait for next mic press
       setTimeout(() => {
@@ -279,8 +270,7 @@ export default function App() {
   const handleTopicSelect = useCallback((zone: Zone) => {
     setCurrentTopic(`${zone.icon} ${zone.name}`);
     setShowTopicPicker(false);
-    setSpeechText(`Ooh, let's explore ${zone.name}! This is gonna be fun! 🎉`);
-    setShowSpeech(true);
+    setMochiState("speaking");
     setMochiState("speaking");
     setTimeout(() => setMochiState("idle"), 3000);
   }, []);
@@ -291,7 +281,6 @@ export default function App() {
     } else {
       setScreen("start");
       setMochiState("sleeping");
-      setShowSpeech(false);
       setMicState("default");
     }
   }, [totalXp]);
@@ -304,7 +293,6 @@ export default function App() {
     setShowCompletion(false);
     setScreen("start");
     setMochiState("sleeping");
-    setShowSpeech(false);
     setMicState("default");
     setTotalXp(0);
     setCardsCollected(0);
@@ -326,6 +314,9 @@ export default function App() {
     >
       {/* Starfield */}
       <StarfieldCanvas />
+
+      {/* Immersive background glow */}
+      {screen === "session" && <SideGlow state={micState} />}
 
       {/* Floating island landscape elements */}
       <div className="absolute inset-0 z-[2] pointer-events-none">
@@ -419,7 +410,7 @@ export default function App() {
               animate={{ scale: waking ? 1.3 : 1, opacity: 1 }}
               transition={{ duration: 0.6, ease: "easeOut" }}
             >
-              <MochiCharacter size={340} state={mochiState} />
+              <MochiCharacter size={340} state={mochiState} volume={inworld.volumeLevel} />
             </motion.div>
 
             {/* Wake Up button */}
@@ -430,11 +421,11 @@ export default function App() {
                 style={{
                   width: 280,
                   height: 72,
-                  background: "linear-gradient(135deg, #FF7EB3, #C4A8FF)",
+                  background: "linear-gradient(135deg, #4ADE80, #10B981)",
                   borderRadius: 999,
                   border: "none",
                   boxShadow:
-                    "0 0 40px rgba(255,126,179,0.7), 0 8px 32px rgba(196,168,255,0.5)",
+                    "0 0 40px rgba(74, 222, 128, 0.6), 0 8px 32px rgba(16, 185, 129, 0.4)",
                   fontFamily: "'Fredoka One', cursive",
                   fontSize: 22,
                 }}
@@ -446,7 +437,7 @@ export default function App() {
                 }}
                 whileTap={{ scale: 0.92 }}
               >
-                Wake Up Mochi! 🌟
+                Wake Up Mochi!
               </motion.button>
             )}
           </motion.div>
@@ -474,31 +465,17 @@ export default function App() {
                 handleGoHome();
               }}
               cardsCollected={cardsCollected}
-              topicBadge={currentTopic}
               statBars={currentBars}
             />
 
             {/* Center stage */}
             <div className="flex-1 flex flex-col items-center justify-center gap-2 relative w-full">
-              {/* Speech Bubble */}
-              <div className="mb-2">
-                <SpeechBubble text={speechText} visible={showSpeech} />
-              </div>
-
-              {/* Mochi */}
               <MochiCharacter
-                size={260}
+                size={280}
                 state={mochiState}
-                onClick={() => {
-                  setMochiState("happy");
-                  setTimeout(() => setMochiState("idle"), 1500);
-                }}
+                volume={inworld.volumeLevel}
+                onClick={handleMicPress}
               />
-            </div>
-
-            {/* Mic button area */}
-            <div className="pb-8 relative z-20">
-              <MicButton state={micState} onClick={handleMicPress} />
             </div>
 
             {/* Knowledge Card - right side */}

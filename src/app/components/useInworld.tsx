@@ -20,6 +20,8 @@ interface InworldHook {
 
 export function useInworld(): InworldHook {
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -52,6 +54,13 @@ export function useInworld(): InworldHook {
 
   const start = useCallback(async () => {
     try {
+      if (status !== "idle" && status !== "error") return;
+      
+      // Initialize AudioContext on user gesture
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+
       setStatus("connecting");
       setError(null);
 
@@ -86,9 +95,60 @@ export function useInworld(): InworldHook {
       // Handle incoming audio track from AI
       pc.ontrack = (e) => {
         if (!audioRef.current) {
+          console.log("New AI audio track received");
           const audio = document.createElement('audio');
           audio.autoplay = true;
           audio.srcObject = new MediaStream([e.track]);
+          
+          // Initialize analyzer
+          if (audioCtxRef.current && !analyserRef.current) {
+            console.log("Setting up AudioAnalyser for lip-sync");
+            const source = audioCtxRef.current.createMediaStreamSource(audio.srcObject);
+            const analyser = audioCtxRef.current.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            analyserRef.current = analyser;
+          }
+
+          const updateVolume = () => {
+            if (audio.paused || audio.ended || !analyserRef.current) {
+              setVolumeLevel(0);
+              return;
+            }
+            const bufferLength = analyserRef.current.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyserRef.current.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+              sum += dataArray[i];
+            }
+            const average = sum / bufferLength;
+            const v = Math.min(100, Math.floor(average * 2));
+            
+            // Debug: Log volume occasionally if speaking
+            if (v > 10 && Math.random() < 0.05) console.log("Mochi volume output detected:", v);
+            
+            setVolumeLevel(v);
+            requestAnimationFrame(updateVolume);
+          };
+
+          audio.onplay = () => {
+            console.log("Mochi started speaking (audio.onplay)");
+            setStatus("speaking");
+            if (audioCtxRef.current?.state === 'suspended') {
+              audioCtxRef.current.resume();
+            }
+            updateVolume();
+          };
+          audio.onpause = () => {
+            setStatus("active");
+            setVolumeLevel(0);
+          };
+          audio.onended = () => {
+            setStatus("active");
+            setVolumeLevel(0);
+          };
+          
           document.body.appendChild(audio);
           audioRef.current = audio;
         }
@@ -130,33 +190,34 @@ export function useInworld(): InworldHook {
           }
         }));
 
-        // Send a greeting to start the conversation automatically
-        dc.send(JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'message',
-            role: 'user',
-            content: [{ type: 'input_text', text: 'Hi Mochi! Introduce yourself in one short sentence.' }]
-          }
-        }));
-        dc.send(JSON.stringify({ type: 'response.create' }));
+        // Delay greeting slightly to ensure session initialization is solid
+        setTimeout(() => {
+          dc.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'message',
+              role: 'user',
+              content: [{ type: 'input_text', text: "Hi Mochi! Introduce yourself in one short sentence and then ask me what my name is!" }]
+            }
+          }));
+          dc.send(JSON.stringify({ type: 'response.create' }));
+        }, 500);
       };
 
       dc.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
           
-          if (msg.type === 'response.output_text.delta') {
-            setAssistantMessage(prev => prev + (msg.delta || ""));
-            setStatus("speaking");
+          if (msg.type === 'response.created') {
+            setAssistantMessage("");
           }
 
-          if (msg.type === 'response.output_text.done') {
-            setStatus("listening");
+          if (msg.type === 'response.output_text.delta') {
+            setAssistantMessage(prev => prev + (msg.delta || ""));
           }
 
           if (msg.type === 'input_transcript.done') {
-            setTranscript(msg.transcript);
+            setTranscript(msg.transcript || "");
             setStatus("listening");
           }
 
@@ -183,7 +244,7 @@ export function useInworld(): InworldHook {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      // Wait for ICE gathering to complete (or timeout)
+      // Wait for ICE gathering to start (or timeout)
       await new Promise(r => {
         if (pc.iceGatheringState === 'complete') {
           r(null);
@@ -194,9 +255,10 @@ export function useInworld(): InworldHook {
           pc.onicegatheringstatechange = null;
           r(null);
         };
-        pc.onicecandidate = (e) => { if (!e.candidate) done(); };
+        // Proceed as soon as we have at least one candidate or it completes
+        pc.onicecandidate = (e) => { if (!e.candidate || pc.localDescription?.sdp.includes('a=candidate')) done(); };
         pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') done(); };
-        setTimeout(done, 5000); // Max 5s wait
+        setTimeout(done, 1000); // Only wait up to 1s
       });
 
       const res = await fetch(cfg.url, {
@@ -235,6 +297,17 @@ export function useInworld(): InworldHook {
       }
     }
   }, [isMuted]);
+
+  // Declarative mic track management (Auto-mute when speaking)
+  useEffect(() => {
+    if (streamRef.current) {
+      const shouldBeEnabled = status !== "speaking" && !isMuted;
+      console.log(`Mic Management: isSpeaking=${status === "speaking"}, isMuted=${isMuted} -> Enabled=${shouldBeEnabled}`);
+      streamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = shouldBeEnabled;
+      });
+    }
+  }, [status, isMuted]);
 
   useEffect(() => {
     return () => {

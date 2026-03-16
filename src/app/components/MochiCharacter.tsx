@@ -3,10 +3,11 @@ import { motion } from "motion/react";
 interface MochiCharacterProps {
   size?: number;
   state?: "idle" | "listening" | "speaking" | "happy" | "sleeping";
+  volume?: number; // 0-100 real-time volume level
   onClick?: () => void;
 }
 
-export function MochiCharacter({ size = 260, state = "idle", onClick }: MochiCharacterProps) {
+export function MochiCharacter({ size = 260, state = "idle", volume = 0, onClick }: MochiCharacterProps) {
   const eyeState = () => {
     switch (state) {
       case "sleeping": return { scaleY: 0.1, y: 2 };
@@ -18,7 +19,15 @@ export function MochiCharacter({ size = 260, state = "idle", onClick }: MochiCha
 
   const mouthState = () => {
     switch (state) {
-      case "speaking": return { scaleY: 1.3, scaleX: 0.8 };
+      case "speaking": 
+        // Base pulse + dynamic volume scaling
+        // If volume is > 0, we use it to scale the mouth. 
+        // 0-100 normalized volume
+        const vScale = 0.9 + (volume / 100) * 2.0;
+        return { 
+          scaleY: vScale, 
+          scaleX: 0.8 + (volume / 100) * 0.5,
+        };
       case "happy": return { scaleY: 1.5, scaleX: 1.2 };
       case "listening": return { scaleY: 0.5, scaleX: 0.6 };
       default: return { scaleY: 1, scaleX: 1 };
@@ -92,15 +101,13 @@ export function MochiCharacter({ size = 260, state = "idle", onClick }: MochiCha
           <ellipse cx="145" cy="115" rx="14" ry="10" fill="rgba(255,126,179,0.45)" />
 
           {/* Mouth */}
-          <motion.g animate={mouthState()} transition={{ duration: 0.3 }}>
+          <motion.g animate={mouthState()} transition={{ duration: 0.1 }}>
             {state === "happy" ? (
               <path d="M 88 120 Q 100 138 112 120" stroke="#2D1B6B" strokeWidth="3" fill="none" strokeLinecap="round" />
             ) : state === "speaking" ? (
-              <motion.ellipse
-                cx="100" cy="122" rx="8" ry="6"
+              <ellipse 
+                cx="100" cy="122" rx="10" ry="12" 
                 fill="#2D1B6B"
-                animate={{ ry: [4, 8, 4] }}
-                transition={{ duration: 0.5, repeat: Infinity }}
               />
             ) : (
               <path d="M 90 120 Q 100 130 110 120" stroke="#2D1B6B" strokeWidth="2.5" fill="none" strokeLinecap="round" />

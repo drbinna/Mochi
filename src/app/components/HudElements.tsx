@@ -21,7 +21,6 @@ interface HudProps {
   showSettings?: boolean;
   onSettings?: () => void;
   cardsCollected?: number;
-  topicBadge?: string;
   statBars?: { label: string; color: string; value: number }[];
 }
 
@@ -35,7 +34,6 @@ export function HudElements({
   showSettings,
   onSettings,
   cardsCollected = 0,
-  topicBadge,
   statBars,
 }: HudProps) {
   return (
@@ -118,26 +116,6 @@ export function HudElements({
           </motion.div>
         )}
       </div>
-
-      {/* Topic badge - top center */}
-      {topicBadge && (
-        <motion.div
-          className="absolute top-5 left-1/2 -translate-x-1/2 z-20"
-          initial={{ y: -40, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          style={{
-            background: "rgba(10, 8, 32, 0.72)",
-            backdropFilter: "blur(16px) saturate(200%)",
-            border: "1.5px solid rgba(255, 255, 255, 0.22)",
-            borderRadius: 20,
-            padding: "6px 18px",
-            fontFamily: "'Nunito', sans-serif",
-            fontWeight: 800,
-          }}
-        >
-          <span className="text-white text-[14px]">{topicBadge}</span>
-        </motion.div>
-      )}
 
       {/* Bottom-left: Mute */}
       <div className="absolute bottom-5 left-5 z-20">
